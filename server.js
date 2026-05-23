@@ -1,65 +1,87 @@
 const express = require('express');
+const db = require('./db'); // 1. Importa a nossa conexão com o banco
+
 const app = express();
 app.use(express.json());
 
-// 1. Nosso "Banco de Dados" temporário em memória
-let chamados = [];
-
-// Rota Base de Teste
+// Rota Base
 app.get('/', (req, res) => {
-    res.json({ mensagem: "API do EasyDesk rodando perfeitamente!" });
+    res.json({ mensagem: "API do EasyDesk conectada ao MySQL com sucesso!" });
 });
 
 // ==========================================
-// ROTAS DO CRUD (Create, Read, Update, Delete)
+// ROTAS DO CRUD LIGADAS AO MYSQL
 // ==========================================
 
-// 2. READ : Retorna todos os chamados
-app.get('/chamados', (req, res) => {
-    res.json(chamados);
-});
-
-// 3. CREATE : Adiciona um novo chamado
-app.post('/chamados', (req, res) => {
-    const novoChamado = {
-        id: Date.now(), // Gera um ID único
-        solicitante: req.body.solicitante,
-        descricao: req.body.descricao,
-        prioridade: req.body.prioridade,
-        status: 'Pendente',
-        data: new Date().toLocaleDateString('pt-BR')
-    };
-    
-    chamados.push(novoChamado);
-    res.status(201).json({ mensagem: "Chamado criado com sucesso!", chamado: novoChamado });
-});
-
-// 4. UPDATE : Altera o status de um chamado existente
-app.put('/chamados/:id', (req, res) => {
-    const id = parseInt(req.params.id);
-    const { status } = req.body; // Pega o novo status que o usuário enviou
-
-    const index = chamados.findIndex(c => c.id === id);
-
-    if (index === -1) {
-        return res.status(404).json({ erro: "Chamado não encontrado." });
+// READ: Retorna todos os chamados
+app.get('/chamados', async (req, res) => {
+    try {
+        // Pede ao banco para selecionar tudo da tabela chamados
+        const [linhas] = await db.execute('SELECT * FROM chamados');
+        res.json(linhas);
+    } catch (erro) {
+        console.error(erro);
+        res.status(500).json({ erro: "Erro ao buscar chamados no banco de dados." });
     }
-
-    chamados[index].status = status;
-    res.json({ mensagem: "Status atualizado com sucesso!", chamado: chamados[index] });
 });
 
-// 5. DELETE : Remove um chamado do sistema
-app.delete('/chamados/:id', (req, res) => {
-    const id = parseInt(req.params.id);
-    const index = chamados.findIndex(c => c.id === id);
-
-    if (index === -1) {
-        return res.status(404).json({ erro: "Chamado não encontrado." });
+// CREATE: Adiciona um novo chamado
+app.post('/chamados', async (req, res) => {
+    try {
+        const { solicitante, descricao, prioridade } = req.body;
+        
+        // A query SQL com ? protege contra ataques de Injeção de SQL
+        const query = 'INSERT INTO chamados (solicitante, descricao, prioridade) VALUES (?, ?, ?)';
+        const [resultado] = await db.execute(query, [solicitante, descricao, prioridade]);
+        
+        res.status(201).json({ 
+            mensagem: "Chamado criado com sucesso!", 
+            id_gerado: resultado.insertId 
+        });
+    } catch (erro) {
+        console.error(erro);
+        res.status(500).json({ erro: "Erro ao criar chamado no banco." });
     }
+});
 
-    chamados.splice(index, 1); // Remove 1 item a partir daquela posição
-    res.json({ mensagem: "Chamado excluído com sucesso!" });
+// UPDATE: Altera o status de um chamado
+app.put('/chamados/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const { status } = req.body;
+        
+        const query = 'UPDATE chamados SET status = ? WHERE id = ?';
+        const [resultado] = await db.execute(query, [status, id]);
+
+        // Se nenhuma linha foi afetada, o ID não existe
+        if (resultado.affectedRows === 0) {
+            return res.status(404).json({ erro: "Chamado não encontrado." });
+        }
+
+        res.json({ mensagem: "Status atualizado com sucesso!" });
+    } catch (erro) {
+        console.error(erro);
+        res.status(500).json({ erro: "Erro ao atualizar chamado." });
+    }
+});
+
+// DELETE: Remove um chamado
+app.delete('/chamados/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        
+        const query = 'DELETE FROM chamados WHERE id = ?';
+        const [resultado] = await db.execute(query, [id]);
+
+        if (resultado.affectedRows === 0) {
+            return res.status(404).json({ erro: "Chamado não encontrado." });
+        }
+
+        res.json({ mensagem: "Chamado excluído com sucesso!" });
+    } catch (erro) {
+        console.error(erro);
+        res.status(500).json({ erro: "Erro ao excluir chamado." });
+    }
 });
 
 // ==========================================

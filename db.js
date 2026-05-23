@@ -1,0 +1,20 @@
+// Importa o driver do MySQL e a biblioteca de segurança
+const mysql = require('mysql2/promise');
+require('dotenv').config();
+
+// Cria um pool de conexões. 
+// Isso evita que o banco trave se muitas pessoas acessarem ao mesmo tempo.
+const pool = mysql.createPool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME
+});
+
+// Testa a conexão assim que o arquivo é lido
+pool.getConnection()
+    .then(() => console.log('✅ Conexão com o MySQL estabelecida com sucesso!'))
+    .catch((err) => console.error('❌ Erro ao conectar no banco:', err));
+
+// Exporta a conexão para ser usada em outros arquivos
+module.exports = pool;
