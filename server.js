@@ -1,5 +1,6 @@
 const express = require('express');
-const db = require('./db'); // 1. Importa a nossa conexão com o banco
+const db = require('./db');
+const bcrypt = require('bcrypt'); // 1. Importa o triturador de senhas
 
 const app = express();
 app.use(express.json());
@@ -10,76 +11,81 @@ app.get('/', (req, res) => {
 });
 
 // ==========================================
-// ROTAS DO CRUD LIGADAS AO MYSQL
+// ROTAS DE USUÁRIOS E SEGURANÇA
 // ==========================================
 
-// READ: Retorna todos os chamados
-app.get('/chamados', async (req, res) => {
+// CREATE: Cadastro de Usuário com Criptografia
+app.post('/usuarios', async (req, res) => {
     try {
-        // Pede ao banco para selecionar tudo da tabela chamados
-        const [linhas] = await db.execute('SELECT * FROM chamados');
-        res.json(linhas);
-    } catch (erro) {
-        console.error(erro);
-        res.status(500).json({ erro: "Erro ao buscar chamados no banco de dados." });
-    }
-});
+        const { nome, email, senha } = req.body;
 
-// CREATE: Adiciona um novo chamado
-app.post('/chamados', async (req, res) => {
-    try {
-        const { solicitante, descricao, prioridade } = req.body;
+        // O número 10 é o "salt" (força da criptografia). Ele embaralha a senha 10 vezes.
+        const senhaCriptografada = await bcrypt.hash(senha, 10);
+
+        const query = 'INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)';
         
-        // A query SQL com ? protege contra ataques de Injeção de SQL
-        const query = 'INSERT INTO chamados (solicitante, descricao, prioridade) VALUES (?, ?, ?)';
-        const [resultado] = await db.execute(query, [solicitante, descricao, prioridade]);
-        
+        // Salvamos a senha criptografada no banco, NUNCA a original!
+        const [resultado] = await db.execute(query, [nome, email, senhaCriptografada]);
+
         res.status(201).json({ 
-            mensagem: "Chamado criado com sucesso!", 
+            mensagem: "Usuário cadastrado com sucesso!", 
             id_gerado: resultado.insertId 
         });
     } catch (erro) {
         console.error(erro);
-        res.status(500).json({ erro: "Erro ao criar chamado no banco." });
+        // O MySQL retorna o código 'ER_DUP_ENTRY' se alguém tentar usar um e-mail que já existe
+        if (erro.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ erro: "Este e-mail já está cadastrado." });
+        }
+        res.status(500).json({ erro: "Erro ao cadastrar usuário." });
     }
 });
 
-// UPDATE: Altera o status de um chamado
+// ==========================================
+// ROTAS DO CRUD LIGADAS AO MYSQL (CHAMADOS)
+// ==========================================
+
+app.get('/chamados', async (req, res) => {
+    try {
+        const [linhas] = await db.execute('SELECT * FROM chamados');
+        res.json(linhas);
+    } catch (erro) {
+        res.status(500).json({ erro: "Erro ao buscar chamados." });
+    }
+});
+
+app.post('/chamados', async (req, res) => {
+    try {
+        const { solicitante, descricao, prioridade } = req.body;
+        const query = 'INSERT INTO chamados (solicitante, descricao, prioridade) VALUES (?, ?, ?)';
+        const [resultado] = await db.execute(query, [solicitante, descricao, prioridade]);
+        res.status(201).json({ mensagem: "Chamado criado com sucesso!", id_gerado: resultado.insertId });
+    } catch (erro) {
+        res.status(500).json({ erro: "Erro ao criar chamado." });
+    }
+});
+
 app.put('/chamados/:id', async (req, res) => {
     try {
         const id = req.params.id;
         const { status } = req.body;
-        
         const query = 'UPDATE chamados SET status = ? WHERE id = ?';
         const [resultado] = await db.execute(query, [status, id]);
-
-        // Se nenhuma linha foi afetada, o ID não existe
-        if (resultado.affectedRows === 0) {
-            return res.status(404).json({ erro: "Chamado não encontrado." });
-        }
-
-        res.json({ mensagem: "Status atualizado com sucesso!" });
+        if (resultado.affectedRows === 0) return res.status(404).json({ erro: "Chamado não encontrado." });
+        res.json({ mensagem: "Status atualizado!" });
     } catch (erro) {
-        console.error(erro);
         res.status(500).json({ erro: "Erro ao atualizar chamado." });
     }
 });
 
-// DELETE: Remove um chamado
 app.delete('/chamados/:id', async (req, res) => {
     try {
         const id = req.params.id;
-        
         const query = 'DELETE FROM chamados WHERE id = ?';
         const [resultado] = await db.execute(query, [id]);
-
-        if (resultado.affectedRows === 0) {
-            return res.status(404).json({ erro: "Chamado não encontrado." });
-        }
-
-        res.json({ mensagem: "Chamado excluído com sucesso!" });
+        if (resultado.affectedRows === 0) return res.status(404).json({ erro: "Chamado não encontrado." });
+        res.json({ mensagem: "Chamado excluído!" });
     } catch (erro) {
-        console.error(erro);
         res.status(500).json({ erro: "Erro ao excluir chamado." });
     }
 });
