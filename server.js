@@ -1,6 +1,8 @@
 const express = require('express');
 const db = require('./db');
-const bcrypt = require('bcrypt'); // 1. Importa o triturador de senhas
+const bcrypt = require('bcrypt'); // Importa o triturador de senhas
+const jwt = require('jsonwebtoken'); // Importa o gerador de tokens
+const verificarToken = require('./auth'); // Importa o nosso leitor de segurança
 
 const app = express();
 app.use(express.json());
@@ -41,11 +43,51 @@ app.post('/usuarios', async (req, res) => {
     }
 });
 
+// READ: Login de Usuário (Geração do Token)
+app.post('/login', async (req, res) => {
+    try {
+        const { email, senha } = req.body;
+
+        // 1. Procura no banco de dados se o e-mail existe
+        const [usuarios] = await db.execute('SELECT * FROM usuarios WHERE email = ?', [email]);
+        
+        // Se o array voltar vazio, o usuário não existe
+        if (usuarios.length === 0) {
+            return res.status(401).json({ erro: "E-mail ou senha inválidos." });
+        }
+
+        const usuario = usuarios[0];
+
+        // 2. Compara a senha digitada em texto puro com o hash embaralhado do banco
+        const senhaValida = await bcrypt.compare(senha, usuario.senha);
+
+        if (!senhaValida) {
+            return res.status(401).json({ erro: "E-mail ou senha inválidos." });
+        }
+
+        // 3. Tudo certo! Gera o Token JWT contendo o ID e o Nome do usuário
+        const token = jwt.sign(
+            { id: usuario.id, nome: usuario.nome },
+            process.env.JWT_SECRET,
+            { expiresIn: '2h' } // Segurança: O token expira e perde a validade em 2 horas
+        );
+
+        res.json({ 
+            mensagem: "Login realizado com sucesso!", 
+            token: token 
+        });
+
+    } catch (erro) {
+        console.error(erro);
+        res.status(500).json({ erro: "Erro interno ao realizar login." });
+    }
+});
+
 // ==========================================
 // ROTAS DO CRUD LIGADAS AO MYSQL (CHAMADOS)
 // ==========================================
 
-app.get('/chamados', async (req, res) => {
+app.get('/chamados', verificarToken, async (req, res) => {
     try {
         const [linhas] = await db.execute('SELECT * FROM chamados');
         res.json(linhas);
@@ -54,7 +96,7 @@ app.get('/chamados', async (req, res) => {
     }
 });
 
-app.post('/chamados', async (req, res) => {
+app.post('/chamados', verificarToken, async (req, res) => {
     try {
         const { solicitante, descricao, prioridade } = req.body;
         const query = 'INSERT INTO chamados (solicitante, descricao, prioridade) VALUES (?, ?, ?)';
@@ -65,7 +107,7 @@ app.post('/chamados', async (req, res) => {
     }
 });
 
-app.put('/chamados/:id', async (req, res) => {
+app.put('/chamados/:id', verificarToken, async (req, res) => {
     try {
         const id = req.params.id;
         const { status } = req.body;
@@ -78,7 +120,7 @@ app.put('/chamados/:id', async (req, res) => {
     }
 });
 
-app.delete('/chamados/:id', async (req, res) => {
+app.delete('/chamados/:id', verificarToken, async (req, res) => {
     try {
         const id = req.params.id;
         const query = 'DELETE FROM chamados WHERE id = ?';
