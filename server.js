@@ -1,10 +1,13 @@
 const express = require('express');
+const cors = require('cors'); // Importa o CORS
 const db = require('./db');
 const bcrypt = require('bcrypt'); // Importa o triturador de senhas
 const jwt = require('jsonwebtoken'); // Importa o gerador de tokens
 const verificarToken = require('./auth'); // Importa o nosso leitor de segurança
 
 const app = express();
+
+app.use(cors()); // Libera a comunicação com o frontend
 app.use(express.json());
 
 // Rota Base
