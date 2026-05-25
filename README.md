@@ -62,3 +62,12 @@ DB_PASSWORD=sua_senha_do_banco
 DB_PORT=porta_de_conexao
 DB_NAME=nome_do_banco_de_dados
 JWT_SECRET=chave_secreta_para_assinatura_do_token
+
+# Instalar as dependências do projeto
+npm install
+
+# Executar o script automatizado de criação das tabelas no banco de dados
+node setup.js
+
+# Iniciar o servidor em ambiente de desenvolvimento (Nodemon)
+npm run dev
