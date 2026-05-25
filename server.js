@@ -20,7 +20,7 @@ app.get('/', (req, res) => {
 // ==========================================
 
 // CREATE: Cadastro de Usuário com Criptografia
-app.post('/usuarios', async (req, res) => {
+app.post('/usuarios', verificarToken, async (req, res) => {
     try {
         const { nome, email, senha } = req.body;
 
