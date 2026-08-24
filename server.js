@@ -41,7 +41,7 @@ app.get('/', (req, res) => {
 app.post('/usuarios', [
     // GRC: Validação e sanitização das entradas
     body('nome').notEmpty().withMessage('O nome é obrigatório.').trim().escape(),
-    body('email').isEmail().withMessage('E-mail inválido.').normalizeEmail(),
+    body('email').isEmail().withMessage('E-mail inválido.').toLowerCase(),
     body('senha').isLength({ min: 3 }).withMessage('A senha deve ter pelo menos 3 caracteres.')
 ], async (req, res) => {
     // GRC: Checagem do resultado da validação
@@ -66,19 +66,20 @@ app.post('/usuarios', [
             id_gerado: resultado.rows[0].id 
         });
     } catch (erro) {
-        console.error(erro);
         // O PostgreSQL retorna o código '23505' para unique_violation
         if (erro.code === '23505') {
             return res.status(400).json({ erro: "Este e-mail já está cadastrado." });
         }
         res.status(500).json({ erro: "Erro ao cadastrar usuário." });
+        console.error(erro);
     }
 });
 
 // READ: Login de Usuário (Geração do Token) + Rate Limit (GRC)
 app.post('/login', loginLimiter, async (req, res) => {
     try {
-        const { email, senha } = req.body;
+        const email = req.body.email ? req.body.email.toLowerCase() : '';
+        const senha = req.body.senha;
 
         // 1. Procura no banco de dados se o e-mail existe
         const resultado = await db.query('SELECT * FROM usuarios WHERE email = $1', [email]);
