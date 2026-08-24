@@ -19,10 +19,12 @@ async function criarTabelas() {
         await db.execute(`
             CREATE TABLE IF NOT EXISTS chamados (
                 id INT AUTO_INCREMENT PRIMARY KEY,
+                usuario_id INT NOT NULL,
                 solicitante VARCHAR(100) NOT NULL,
                 descricao TEXT NOT NULL,
                 prioridade VARCHAR(20) NOT NULL,
-                status VARCHAR(20) DEFAULT 'Pendente'
+                status VARCHAR(20) DEFAULT 'Pendente',
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
             )
         `);
         console.log("✅ Tabela 'chamados' criada com sucesso!");

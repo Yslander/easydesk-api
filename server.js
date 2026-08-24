@@ -1,5 +1,11 @@
+require('dotenv').config(); // Segurança: Carrega variáveis de ambiente
 const express = require('express');
 const cors = require('cors'); // Importa o CORS
+const helmet = require('helmet'); // GRC: Proteção de cabeçalhos HTTP
+const morgan = require('morgan'); // GRC: Auditoria de Logs
+const rateLimit = require('express-rate-limit'); // GRC: Mitigação de Brute Force
+const { body, validationResult } = require('express-validator'); // GRC: Sanitização e Validação
+
 const db = require('./db');
 const bcrypt = require('bcrypt'); // Importa o triturador de senhas
 const jwt = require('jsonwebtoken'); // Importa o gerador de tokens
@@ -7,8 +13,18 @@ const verificarToken = require('./auth'); // Importa o nosso leitor de seguranç
 
 const app = express();
 
+app.use(helmet()); // GRC: Ativa a proteção de cabeçalhos HTTP (XSS, Clickjacking, etc)
+app.use(morgan('dev')); // GRC: Habilita logs de auditoria no terminal
+
 app.use(cors()); // Libera a comunicação com o frontend
 app.use(express.json());
+
+// GRC: Rate Limit para evitar ataques de força bruta no login
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 5, // Limita cada IP a 5 tentativas de login por janela
+    message: { erro: "Muitas tentativas de login detectadas. Tente novamente após 15 minutos." }
+});
 
 // Rota Base
 app.get('/', (req, res) => {
@@ -19,8 +35,19 @@ app.get('/', (req, res) => {
 // ROTAS DE USUÁRIOS E SEGURANÇA
 // ==========================================
 
-// CREATE: Cadastro de Usuário com Criptografia
-app.post('/usuarios', verificarToken, async (req, res) => {
+// CREATE: Cadastro de Usuário com Criptografia e Validação
+app.post('/usuarios', [
+    // GRC: Validação e sanitização das entradas
+    body('nome').notEmpty().withMessage('O nome é obrigatório.').trim().escape(),
+    body('email').isEmail().withMessage('E-mail inválido.').normalizeEmail(),
+    body('senha').isLength({ min: 3 }).withMessage('A senha deve ter pelo menos 3 caracteres.')
+], async (req, res) => {
+    // GRC: Checagem do resultado da validação
+    const erros = validationResult(req);
+    if (!erros.isEmpty()) {
+        return res.status(400).json({ erros: erros.array() });
+    }
+
     try {
         const { nome, email, senha } = req.body;
 
@@ -46,8 +73,8 @@ app.post('/usuarios', verificarToken, async (req, res) => {
     }
 });
 
-// READ: Login de Usuário (Geração do Token)
-app.post('/login', async (req, res) => {
+// READ: Login de Usuário (Geração do Token) + Rate Limit (GRC)
+app.post('/login', loginLimiter, async (req, res) => {
     try {
         const { email, senha } = req.body;
 
@@ -92,31 +119,53 @@ app.post('/login', async (req, res) => {
 
 app.get('/chamados', verificarToken, async (req, res) => {
     try {
-        const [linhas] = await db.execute('SELECT * FROM chamados');
+        const usuario_id = req.usuario.id;
+        const [linhas] = await db.execute('SELECT * FROM chamados WHERE usuario_id = ?', [usuario_id]);
         res.json(linhas);
     } catch (erro) {
         res.status(500).json({ erro: "Erro ao buscar chamados." });
     }
 });
 
-app.post('/chamados', verificarToken, async (req, res) => {
+app.post('/chamados', verificarToken, [
+    // GRC: Sanitização para evitar XSS nas descrições
+    body('descricao').notEmpty().withMessage('A descrição não pode ser vazia.').trim().escape(),
+    body('prioridade').isIn(['Baixa', 'Média', 'Alta']).withMessage('Prioridade inválida.')
+], async (req, res) => {
+    // GRC: Checagem do resultado da validação
+    const erros = validationResult(req);
+    if (!erros.isEmpty()) {
+        return res.status(400).json({ erros: erros.array() });
+    }
+
     try {
-        const { solicitante, descricao, prioridade } = req.body;
-        const query = 'INSERT INTO chamados (solicitante, descricao, prioridade) VALUES (?, ?, ?)';
-        const [resultado] = await db.execute(query, [solicitante, descricao, prioridade]);
+        const { descricao, prioridade } = req.body;
+        const usuario_id = req.usuario.id;
+        const solicitante = req.usuario.nome; // Pegamos o nome direto do Token de quem está logado
+        
+        const query = 'INSERT INTO chamados (usuario_id, solicitante, descricao, prioridade) VALUES (?, ?, ?, ?)';
+        const [resultado] = await db.execute(query, [usuario_id, solicitante, descricao, prioridade]);
         res.status(201).json({ mensagem: "Chamado criado com sucesso!", id_gerado: resultado.insertId });
     } catch (erro) {
         res.status(500).json({ erro: "Erro ao criar chamado." });
     }
 });
 
-app.put('/chamados/:id', verificarToken, async (req, res) => {
+app.put('/chamados/:id', verificarToken, [
+    body('status').isIn(['Pendente', 'Em Andamento', 'Concluído']).withMessage('Status inválido.')
+], async (req, res) => {
+    const erros = validationResult(req);
+    if (!erros.isEmpty()) {
+        return res.status(400).json({ erros: erros.array() });
+    }
+
     try {
         const id = req.params.id;
         const { status } = req.body;
-        const query = 'UPDATE chamados SET status = ? WHERE id = ?';
-        const [resultado] = await db.execute(query, [status, id]);
-        if (resultado.affectedRows === 0) return res.status(404).json({ erro: "Chamado não encontrado." });
+        const usuario_id = req.usuario.id;
+        const query = 'UPDATE chamados SET status = ? WHERE id = ? AND usuario_id = ?';
+        const [resultado] = await db.execute(query, [status, id, usuario_id]);
+        if (resultado.affectedRows === 0) return res.status(404).json({ erro: "Chamado não encontrado ou sem permissão." });
         res.json({ mensagem: "Status atualizado!" });
     } catch (erro) {
         res.status(500).json({ erro: "Erro ao atualizar chamado." });
@@ -126,9 +175,10 @@ app.put('/chamados/:id', verificarToken, async (req, res) => {
 app.delete('/chamados/:id', verificarToken, async (req, res) => {
     try {
         const id = req.params.id;
-        const query = 'DELETE FROM chamados WHERE id = ?';
-        const [resultado] = await db.execute(query, [id]);
-        if (resultado.affectedRows === 0) return res.status(404).json({ erro: "Chamado não encontrado." });
+        const usuario_id = req.usuario.id;
+        const query = 'DELETE FROM chamados WHERE id = ? AND usuario_id = ?';
+        const [resultado] = await db.execute(query, [id, usuario_id]);
+        if (resultado.affectedRows === 0) return res.status(404).json({ erro: "Chamado não encontrado ou sem permissão." });
         res.json({ mensagem: "Chamado excluído!" });
     } catch (erro) {
         res.status(500).json({ erro: "Erro ao excluir chamado." });
@@ -138,7 +188,13 @@ app.delete('/chamados/:id', verificarToken, async (req, res) => {
 // ==========================================
 // LIGANDO O SERVIDOR
 // ==========================================
-const PORTA = 3000;
-app.listen(PORTA, () => {
-    console.log(`🚀 Servidor rodando na porta ${PORTA}`);
-});
+const PORTA = process.env.PORT || 3000;
+
+if (require.main === module) {
+    app.listen(PORTA, () => {
+        console.log(`🚀 Servidor rodando na porta ${PORTA}`);
+    });
+}
+
+// Exporta para testes automatizados
+module.exports = app;
