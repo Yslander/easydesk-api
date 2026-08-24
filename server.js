@@ -21,14 +21,14 @@ app.use(express.json());
 
 // GRC: Rate Limit para evitar ataques de força bruta no login
 const loginLimiter = rateLimit({
-    windowMs: 1, // 1 milissegundo
+    windowMs: 15 * 60 * 1000, // 15 minutos
     max: 5, // Limita cada IP a 5 tentativas de login por janela
-    message: { erro: "Muitas tentativas de login detectadas. Tente novamente mais tarde." }
+    message: { erro: "Muitas tentativas de login detectadas. Tente novamente após 15 minutos." }
 });
 
 // Rota Base
 app.get('/', (req, res) => {
-    res.json({ mensagem: "API do EasyDesk conectada ao MySQL com sucesso!" });
+    res.json({ mensagem: "API do EasyDesk conectada ao PostgreSQL (Supabase) com sucesso!" });
 });
 
 // ==========================================
@@ -54,19 +54,19 @@ app.post('/usuarios', [
         // O número 10 é o "salt" (força da criptografia). Ele embaralha a senha 10 vezes.
         const senhaCriptografada = await bcrypt.hash(senha, 10);
 
-        const query = 'INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)';
+        const query = 'INSERT INTO usuarios (nome, email, senha) VALUES ($1, $2, $3) RETURNING id';
         
         // Salvamos a senha criptografada no banco, NUNCA a original!
-        const [resultado] = await db.execute(query, [nome, email, senhaCriptografada]);
+        const resultado = await db.query(query, [nome, email, senhaCriptografada]);
 
         res.status(201).json({ 
             mensagem: "Usuário cadastrado com sucesso!", 
-            id_gerado: resultado.insertId 
+            id_gerado: resultado.rows[0].id 
         });
     } catch (erro) {
         console.error(erro);
-        // O MySQL retorna o código 'ER_DUP_ENTRY' se alguém tentar usar um e-mail que já existe
-        if (erro.code === 'ER_DUP_ENTRY') {
+        // O PostgreSQL retorna o código '23505' para unique_violation
+        if (erro.code === '23505') {
             return res.status(400).json({ erro: "Este e-mail já está cadastrado." });
         }
         res.status(500).json({ erro: "Erro ao cadastrar usuário." });
@@ -79,7 +79,8 @@ app.post('/login', loginLimiter, async (req, res) => {
         const { email, senha } = req.body;
 
         // 1. Procura no banco de dados se o e-mail existe
-        const [usuarios] = await db.execute('SELECT * FROM usuarios WHERE email = ?', [email]);
+        const resultado = await db.query('SELECT * FROM usuarios WHERE email = $1', [email]);
+        const usuarios = resultado.rows;
         
         // Se o array voltar vazio, o usuário não existe
         if (usuarios.length === 0) {
@@ -120,10 +121,9 @@ app.post('/login', loginLimiter, async (req, res) => {
 app.get('/chamados', verificarToken, async (req, res) => {
     try {
         const usuario_id = req.usuario.id;
-        const [linhas] = await db.execute('SELECT * FROM chamados WHERE usuario_id = ?', [usuario_id]);
-        res.json(linhas);
+        const resultado = await db.query('SELECT * FROM chamados WHERE usuario_id = $1', [usuario_id]);
+        res.json(resultado.rows);
     } catch (erro) {
-        console.error("ERRO NO GET /CHAMADOS:", erro);
         res.status(500).json({ erro: "Erro ao buscar chamados." });
     }
 });
@@ -144,9 +144,9 @@ app.post('/chamados', verificarToken, [
         const usuario_id = req.usuario.id;
         const solicitante = req.usuario.nome; // Pegamos o nome direto do Token de quem está logado
         
-        const query = 'INSERT INTO chamados (usuario_id, solicitante, descricao, prioridade) VALUES (?, ?, ?, ?)';
-        const [resultado] = await db.execute(query, [usuario_id, solicitante, descricao, prioridade]);
-        res.status(201).json({ mensagem: "Chamado criado com sucesso!", id_gerado: resultado.insertId });
+        const query = 'INSERT INTO chamados (usuario_id, solicitante, descricao, prioridade) VALUES ($1, $2, $3, $4) RETURNING id';
+        const resultado = await db.query(query, [usuario_id, solicitante, descricao, prioridade]);
+        res.status(201).json({ mensagem: "Chamado criado com sucesso!", id_gerado: resultado.rows[0].id });
     } catch (erro) {
         res.status(500).json({ erro: "Erro ao criar chamado." });
     }
@@ -164,9 +164,9 @@ app.put('/chamados/:id', verificarToken, [
         const id = req.params.id;
         const { status } = req.body;
         const usuario_id = req.usuario.id;
-        const query = 'UPDATE chamados SET status = ? WHERE id = ? AND usuario_id = ?';
-        const [resultado] = await db.execute(query, [status, id, usuario_id]);
-        if (resultado.affectedRows === 0) return res.status(404).json({ erro: "Chamado não encontrado ou sem permissão." });
+        const query = 'UPDATE chamados SET status = $1 WHERE id = $2 AND usuario_id = $3';
+        const resultado = await db.query(query, [status, id, usuario_id]);
+        if (resultado.rowCount === 0) return res.status(404).json({ erro: "Chamado não encontrado ou sem permissão." });
         res.json({ mensagem: "Status atualizado!" });
     } catch (erro) {
         res.status(500).json({ erro: "Erro ao atualizar chamado." });
@@ -177,9 +177,9 @@ app.delete('/chamados/:id', verificarToken, async (req, res) => {
     try {
         const id = req.params.id;
         const usuario_id = req.usuario.id;
-        const query = 'DELETE FROM chamados WHERE id = ? AND usuario_id = ?';
-        const [resultado] = await db.execute(query, [id, usuario_id]);
-        if (resultado.affectedRows === 0) return res.status(404).json({ erro: "Chamado não encontrado ou sem permissão." });
+        const query = 'DELETE FROM chamados WHERE id = $1 AND usuario_id = $2';
+        const resultado = await db.query(query, [id, usuario_id]);
+        if (resultado.rowCount === 0) return res.status(404).json({ erro: "Chamado não encontrado ou sem permissão." });
         res.json({ mensagem: "Chamado excluído!" });
     } catch (erro) {
         res.status(500).json({ erro: "Erro ao excluir chamado." });

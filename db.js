@@ -1,29 +1,27 @@
-// Importa o driver do MySQL e a biblioteca de segurança
-const mysql = require('mysql2/promise');
+// Importa o driver do PostgreSQL
+const { Pool } = require('pg');
 require('dotenv').config();
 
-// Cria um pool de conexões. 
-// Isso evita que o banco trave se muitas pessoas acessarem ao mesmo tempo.
-const pool = mysql.createPool({
+// Supabase Connection String (ou variáveis separadas)
+// O ideal é usar a connection string fornecida pelo Supabase na variável DATABASE_URL,
+// ou as variáveis DB_HOST, DB_USER, etc.
+const pool = new Pool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    port: process.env.DB_PORT,
+    port: process.env.DB_PORT || 5432,
     ssl: {
-        minVersion: 'TLSv1.2',
-        rejectUnauthorized: true
+        rejectUnauthorized: false // Supabase exige SSL, mas geralmente aceitamos os certificados no free tier
     },
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+    max: 10 // connectionLimit
 });
 
 // Testa a conexão assim que o arquivo é lido
-pool.getConnection()
-    .then((conn) => {
-        console.log('✅ Conexão com o MySQL estabelecida com sucesso!');
-        conn.release();
+pool.connect()
+    .then(client => {
+        console.log('✅ Conexão com o PostgreSQL (Supabase) estabelecida com sucesso!');
+        client.release();
     })
     .catch((err) => console.error('❌ Erro ao conectar no banco:', err));
 
