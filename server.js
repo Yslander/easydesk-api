@@ -123,6 +123,7 @@ app.get('/chamados', verificarToken, async (req, res) => {
         const [linhas] = await db.execute('SELECT * FROM chamados WHERE usuario_id = ?', [usuario_id]);
         res.json(linhas);
     } catch (erro) {
+        console.error("ERRO NO GET /CHAMADOS:", erro);
         res.status(500).json({ erro: "Erro ao buscar chamados." });
     }
 });

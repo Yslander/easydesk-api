@@ -21,7 +21,10 @@ const pool = mysql.createPool({
 
 // Testa a conexão assim que o arquivo é lido
 pool.getConnection()
-    .then(() => console.log('✅ Conexão com o MySQL estabelecida com sucesso!'))
+    .then((conn) => {
+        console.log('✅ Conexão com o MySQL estabelecida com sucesso!');
+        conn.release();
+    })
     .catch((err) => console.error('❌ Erro ao conectar no banco:', err));
 
 // Exporta a conexão para ser usada em outros arquivos
