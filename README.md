@@ -1,10 +1,3 @@
-Aqui está o arquivo `README.md` final para o repositório do back-end. Ele foi estruturado para refletir a maturidade de uma API de mercado, destacando todos os requisitos obrigatórios, de segurança e arquitetura exigidos no edital do Projeto 5 (ConnectHub).
-
-Basta copiar o bloco abaixo e substituir o conteúdo do `README.md` no repositório `easydesk-api`.
-
----
-
-```markdown
 # EasyDesk API (ConnectHub) - Backend 🚀
 
 O **EasyDesk API** é o servidor back-end responsável por gerenciar toda a lógica de negócios, autenticação e persistência de dados do sistema de chamados EasyDesk. Este projeto atende aos requisitos arquiteturais do **Projeto 5 (ConnectHub)**, realizando a transição de uma aplicação de armazenamento local para uma estrutura *full-stack* robusta, segura e relacional.
