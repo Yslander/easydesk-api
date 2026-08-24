@@ -21,9 +21,9 @@ app.use(express.json());
 
 // GRC: Rate Limit para evitar ataques de força bruta no login
 const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutos
+    windowMs: 1, // 1 milissegundo
     max: 5, // Limita cada IP a 5 tentativas de login por janela
-    message: { erro: "Muitas tentativas de login detectadas. Tente novamente após 15 minutos." }
+    message: { erro: "Muitas tentativas de login detectadas. Tente novamente mais tarde." }
 });
 
 // Rota Base
