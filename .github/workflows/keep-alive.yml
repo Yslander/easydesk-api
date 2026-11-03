@@ -1,0 +1,36 @@
+name: Supabase Keep Alive (Anti-Pause Cron)
+
+on:
+  schedule:
+    # Executa a cada 2 dias às 12:00 UTC (garante que o Supabase nunca pause por inatividade de 7 dias)
+    - cron: '0 12 */2 * *'
+  workflow_dispatch: # Permite disparar manualmente pelo painel do GitHub a qualquer momento
+
+jobs:
+  ping-supabase:
+    name: Ping Database & API Keep-Alive
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalar Dependências
+        run: npm install pg dotenv
+
+      - name: Executar Ping no Supabase
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_USER: ${{ secrets.DB_USER }}
+          RENDER_URL: ${{ secrets.RENDER_URL }}
+        run: node scripts/keep-alive.js
+
