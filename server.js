@@ -33,6 +33,37 @@ app.get('/', (req, res) => {
     res.json({ mensagem: "API do EasyDesk conectada ao PostgreSQL (Supabase) com sucesso!" });
 });
 
+// Rota de Keep-Alive (registra leitura e escrita reais nas tabelas do Supabase)
+app.get('/keep-alive', async (req, res) => {
+    try {
+        const result = await db.query(`
+            INSERT INTO public.keep_alive (id, origem, contador, ultimo_ping, detalhes)
+            VALUES (1, 'render_api', 1, NOW(), 'Ping via Render API')
+            ON CONFLICT (id) DO UPDATE
+            SET contador = public.keep_alive.contador + 1,
+                ultimo_ping = NOW(),
+                origem = 'render_api',
+                detalhes = 'Ping via Render API'
+            RETURNING contador, ultimo_ping;
+        `);
+        const usuariosCount = await db.query('SELECT COUNT(*) AS total FROM public.usuarios');
+        const chamadosCount = await db.query('SELECT COUNT(*) AS total FROM public.chamados');
+
+        res.json({
+            status: 'ok',
+            mensagem: 'Keep-alive executado com leitura e escrita reais no Supabase!',
+            heartbeat: result.rows[0],
+            tabelas: {
+                usuarios: parseInt(usuariosCount.rows[0].total, 10),
+                chamados: parseInt(chamadosCount.rows[0].total, 10)
+            }
+        });
+    } catch (erro) {
+        console.error('Erro no keep-alive:', erro.message);
+        res.status(500).json({ status: 'erro', erro: erro.message });
+    }
+});
+
 // ==========================================
 // ROTAS DE USUÁRIOS E SEGURANÇA
 // ==========================================

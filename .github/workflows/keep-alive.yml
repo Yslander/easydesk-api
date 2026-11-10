@@ -2,8 +2,8 @@ name: Supabase Keep Alive (Anti-Pause Cron)
 
 on:
   schedule:
-    # Executa a cada 2 dias às 12:00 UTC (garante que o Supabase nunca pause por inatividade de 7 dias)
-    - cron: '0 12 */2 * *'
+    # Executa diariamente às 12:00 UTC para garantir atividade constante no Supabase e acordar o Render
+    - cron: '0 12 * * *'
   workflow_dispatch: # Permite disparar manualmente pelo painel do GitHub a qualquer momento
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
       - name: Instalar Dependências
         run: npm install pg dotenv
 
-      - name: Executar Ping no Supabase
+      - name: Executar Keep-Alive Completo
         env:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_NAME: ${{ secrets.DB_NAME }}
